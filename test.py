@@ -9,7 +9,7 @@ client = genai.Client()
 for attempt in range(5):
     try:
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-3.6-flash",
             contents="안녕하세요 당신을 한 문장으로 자기소개 해주세요.",
         )
         print(response.text)

@@ -8,10 +8,38 @@ from google import genai
 from google.genai import types
 
 load_dotenv()
-client = genai.Client()
+
+# 모델 하나당 한 번 요청에 최대 30초까지만 기다립니다 (단위: 밀리초)
+client = genai.Client(http_options=types.HttpOptions(timeout=30000))
+
+# 가장 먼저 시도할 모델 (바뀌면 여기만 고치세요)
+PREFERRED = ["gemini-3.6-flash"]
+
+SKIP = ["image", "tts", "live", "embedding", "audio", "veo", "imagen", "robotics"]
 
 
-MODELS = ["gemini-3.8-flash"]
+def build_models():
+    """내 키로 쓸 수 있는 flash 모델을 찾아 시도 순서대로 돌려줍니다."""
+    found = []
+    try:
+        for m in client.models.list():
+            name = m.name.replace("models/", "")
+            actions = getattr(m, "supported_actions", None) or []
+            if "flash" in name and "generateContent" in actions:
+                if not any(s in name for s in SKIP):
+                    found.append(name)
+    except Exception as e:
+        print(f"모델 목록을 못 가져왔어요: {str(e)[:80]}")
+
+    found.sort(key=lambda n: "lite" not in n)  # lite를 앞으로
+    ordered = list(PREFERRED)
+    for n in found:
+        if n not in ordered:
+            ordered.append(n)
+    return ordered
+
+
+MODELS = build_models()
 
 SYSTEM_PROMPT = """너는 일기를 읽고 감정을 정리해주는 회고 도우미야.
 의학적 진단은 하지 않아. 단정하지 말고 "~로 보여요"처럼 조심스럽게 말해.
@@ -33,8 +61,9 @@ SYSTEM_PROMPT = """너는 일기를 읽고 감정을 정리해주는 회고 도�
 def analyze_diary(text):
     """일기 한 편을 분석해서 딕셔너리로 돌려줍니다. 실패하면 None."""
     for model in MODELS:
-        for attempt in range(2):
+        for attempt in range(3):
             try:
+                print(f"[{model}] 시도 {attempt + 1}...", flush=True)
                 response = client.models.generate_content(
                     model=model,
                     contents=text,
@@ -46,14 +75,21 @@ def analyze_diary(text):
                 result = json.loads(response.text)
                 result["model"] = model
                 return result
+            except json.JSONDecodeError:
+                print("  형식 오류, 다시 시도해요.", flush=True)
             except Exception as e:
-                print(f"{model} {attempt + 1}번째 실패: {str(e)[:100]}")
-                time.sleep(5)
+                code = getattr(e, "code", None)
+                print(f"  실패 (코드 {code}): {str(e)[:60]}", flush=True)
+                if code in (400, 403, 404, 429):
+                    break  # 이 모델은 지금 못 쓰니 바로 다음 모델로
+                time.sleep(3 * (attempt + 1))  # 503이면 3, 6, 9초 쉬고 재시도
     return None
 
 
 if __name__ == "__main__":
-    # 테스트용 가짜 일기
+    print("사용할 모델 순서:", MODELS, flush=True)
+
+    # 테스트용 가짜 일기입니다. 실제 일기가 아니에요.
     sample = (
         "오늘은 복학 준비 때문에 도서관에 갔다. 수강신청 일정을 보니 "
         "마음이 조급해졌다. 밤에 잠이 잘 안 와서 많이 피곤했지만, "

@@ -53,7 +53,7 @@ def weekly_report(entries):
         for e in entries
     )
     for model in MODELS:
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 response = client.models.generate_content(
                     model=model,
@@ -63,8 +63,12 @@ def weekly_report(entries):
                     ),
                 )
                 return response.text
-            except Exception:
-                time.sleep(3)
+            except Exception as e:
+                code = getattr(e, "code", None)
+                print(f"[리포트/{model}] 실패 (코드 {code})", flush=True)
+                if code in (400, 403, 404, 429):
+                    break  # 이 모델은 지금 못 쓰니 다음 모델로
+                time.sleep(3 * (attempt + 1))
     return None
 
 
@@ -131,6 +135,8 @@ def render_write():
                         e.update(result)
                         save_entry(e)
                         done += 1
+                    else:
+                        break
             st.write(f"{done}/{len(pending)}개 분석 성공")
 
 
