@@ -3,3 +3,4 @@ venv/
 data/
 data_sample/
 __pycache__/
+.streamlit/secrets.toml
