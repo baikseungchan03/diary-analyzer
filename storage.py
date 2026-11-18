@@ -1,11 +1,14 @@
-"""일기 파일을 읽고 쓰는 일만 합니다."""
+"""일기 파일을 읽고 쓰는 일만 수행."""
 
+import csv
 import glob
+import io
 import json
 import os
 import re
+import shutil
 
-from config import DATA_DIR, USERS_DIR
+from config import DATA_DIR, EMOTIONS, MOOD_KEYS, USERS_DIR
 
 # 별명: 2~20자, 한글/영문/숫자로 시작, 중간에 _ - 허용
 NICKNAME_RULE = re.compile(r"[A-Za-z0-9가-힣][A-Za-z0-9가-힣_-]{1,19}")
@@ -54,3 +57,48 @@ def save_entry(entry, folder=DATA_DIR):
 def has_analysis(entry):
     """AI 분석이 끝난 일기인지 알려줍니다."""
     return bool(entry.get("emotions"))
+
+
+# ---------- 삭제 ----------
+def delete_user_files(nickname):
+    """사용자 한 명의 일기 폴더를 통째로 지웁니다. 지웠으면 True."""
+    target = os.path.abspath(user_dir(nickname))
+    base = os.path.abspath(USERS_DIR)
+    # 안전장치: data/users 바로 아래의 폴더가 아니면 절대 지우지 않아요
+    if os.path.dirname(target) != base:
+        raise ValueError("잘못된 삭제 경로")
+    if os.path.isdir(target):
+        shutil.rmtree(target)
+        return True
+    return False
+
+
+# ---------- 내려받기 ----------
+def export_json(entries):
+    """모든 일기를 JSON 글자(바이트)로 만듭니다. 백업용."""
+    return json.dumps(entries, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def export_csv(entries):
+    """모든 일기를 CSV로 만듭니다. 엑셀에서 한글이 깨지지 않게 BOM을 붙여요."""
+    fields = (
+        ["date", "text", "summary", "keywords"]
+        + [f"AI_{k}" for k in EMOTIONS]
+        + [f"내_{k}" for k in MOOD_KEYS]
+    )
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields)
+    writer.writeheader()
+    for e in entries:
+        row = {
+            "date": e.get("date", ""),
+            "text": e.get("text", ""),
+            "summary": e.get("summary", ""),
+            "keywords": ", ".join(e.get("keywords", [])),
+        }
+        for k in EMOTIONS:
+            row[f"AI_{k}"] = e.get("emotions", {}).get(k, "")
+        for k in MOOD_KEYS:
+            row[f"내_{k}"] = e.get("my_mood", {}).get(k, "")
+        writer.writerow(row)
+    return buf.getvalue().encode("utf-8-sig")

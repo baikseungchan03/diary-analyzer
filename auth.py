@@ -1,4 +1,4 @@
-"""별명 + PIN으로 사용자를 구분합니다. (시범용 간이 방식)"""
+"""별명 + PIN으로 사용자를 구분하고, 동의 여부를 기록합니다. (시범용 간이 방식)"""
 
 import hashlib
 import hmac
@@ -7,12 +7,13 @@ import os
 import re
 import secrets
 import time
+from datetime import datetime
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from config import ACCOUNTS_FILE, DATA_DIR
-from storage import is_valid_nickname, user_dir
+from config import ACCOUNTS_FILE, CONSENT_VERSION, DATA_DIR
+from storage import delete_user_files, is_valid_nickname, user_dir
 
 load_dotenv()
 
@@ -73,9 +74,8 @@ def _signup(nickname, pin, pin2, code):
     return None
 
 
-def _login(nickname, pin):
-    """로그인합니다. 문제가 있으면 안내 문구를, 성공하면 None을 돌려줘요."""
-    key = nickname.strip().lower()
+def _check_pin(key, pin):
+    """PIN이 맞는지 확인합니다. 문제가 있으면 안내 문구를, 맞으면 None을 돌려줘요."""
     accounts = _load_accounts()
     acc = accounts.get(key)
     wrong = "별명이나 PIN이 맞지 않아요."
@@ -91,7 +91,6 @@ def _login(nickname, pin):
         acc["fails"] = 0
         acc["locked_until"] = 0
         _save_accounts(accounts)
-        st.session_state["user"] = key
         return None
 
     acc["fails"] = acc.get("fails", 0) + 1
@@ -100,6 +99,15 @@ def _login(nickname, pin):
         acc["fails"] = 0
     _save_accounts(accounts)
     return wrong
+
+
+def _login(nickname, pin):
+    """로그인합니다. 문제가 있으면 안내 문구를, 성공하면 None을 돌려줘요."""
+    key = nickname.strip().lower()
+    err = _check_pin(key, pin)
+    if err is None:
+        st.session_state["user"] = key
+    return err
 
 
 # ---------- 다른 파일에서 쓰는 함수 ----------
@@ -111,13 +119,56 @@ def current_user_dir():
     return user_dir(current_user())
 
 
-def _logout():
+def verify_pin(pin):
+    """지금 로그인한 사람의 PIN을 다시 확인합니다. (삭제 같은 중요한 작업 전에)"""
+    return _check_pin(current_user(), pin)
+
+
+def has_consent():
+    """현재 동의 문구 버전에 동의했는지 알려줍니다."""
+    acc = _load_accounts().get(current_user(), {})
+    return acc.get("consent", {}).get("version") == CONSENT_VERSION
+
+
+def consent_time():
+    acc = _load_accounts().get(current_user(), {})
+    return acc.get("consent", {}).get("at")
+
+
+def give_consent():
+    accounts = _load_accounts()
+    key = current_user()
+    if key in accounts:
+        accounts[key]["consent"] = {
+            "version": CONSENT_VERSION,
+            "at": datetime.now().isoformat(timespec="seconds"),
+        }
+        _save_accounts(accounts)
+
+
+def delete_account():
+    """일기 폴더와 계정 정보를 모두 지우고 로그아웃 상태로 만듭니다."""
+    key = current_user()
+    delete_user_files(key)
+    accounts = _load_accounts()
+    accounts.pop(key, None)
+    _save_accounts(accounts)
+    clear_session()
+    st.session_state["flash"] = "계정과 일기를 모두 삭제했어요."
+
+
+def clear_session():
     # 앞 사람의 입력 내용이 남지 않도록 세션 전체를 비웁니다
     for k in list(st.session_state.keys()):
         del st.session_state[k]
+
+
+def logout():
+    clear_session()
     st.rerun()
 
 
+# ---------- 화면 ----------
 def _render_login():
     st.subheader("🔐 시작하기")
     tab_in, tab_up = st.tabs(["로그인", "처음이에요 (가입)"])
@@ -161,7 +212,7 @@ def require_login():
         with st.sidebar:
             st.write(f"👤 {current_user()}")
             if st.button("로그아웃"):
-                _logout()
+                logout()
         return True
     _render_login()
     return False
