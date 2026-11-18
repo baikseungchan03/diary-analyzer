@@ -41,12 +41,17 @@ Python, Streamlit, pandas, Google Gemini API
 
 ## 파일 설명
 
-| 파일               | 역할                       |
-| ------------------ | -------------------------- |
-| `app.py`           | 화면(일기 쓰기, 주간 회고) |
-| `analyze.py`       | 일기 한 편을 AI로 분석     |
-| `create_sample.py` | 테스트용 가짜 데이터 생성  |
-| `check_models.py`  | 사용 가능한 모델 진단      |
+| 파일               | 역할                               |
+| ------------------ | ---------------------------------- |
+| `app.py`           | 앱 입구, 탭 조립                   |
+| `config.py`        | 설정값 모음 (폴더 이름, 감정 목록) |
+| `storage.py`       | 일기 파일 읽기/쓰기                |
+| `analyze.py`       | 일기 한 편을 AI로 분석             |
+| `report.py`        | AI 주간 리포트 생성                |
+| `ui_write.py`      | '일기 쓰기' 탭 화면                |
+| `ui_review.py`     | '주간 회고' 탭 화면                |
+| `create_sample.py` | 테스트용 가짜 데이터 생성          |
+| `check_models.py`  | 사용 가능한 모델 진단              |
 
 ## 개인정보
 
