@@ -5,11 +5,11 @@ from collections import Counter
 import pandas as pd
 import streamlit as st
 
-from auth import current_user, current_user_dir
-from config import EMOTIONS, MOOD_KEYS, SAMPLE_DIR
-from report import weekly_report
-from storage import has_analysis, load_entries
-from usage import refund, remaining, try_use
+from backend.auth import current_user, current_user_dir
+from backend.config import EMOTIONS, MOOD_KEYS, SAMPLE_DIR
+from backend.report import weekly_report
+from backend.storage import has_analysis, load_entries
+from backend.usage import refund, remaining, try_use
 
 
 def _choose_entries():

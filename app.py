@@ -1,6 +1,7 @@
 """앱의 입구. 키를 준비하고, 로그인과 동의를 확인한 뒤 화면을 조립합니다."""
 
-import env_setup  # 가장 먼저: .env 또는 Secrets에서 키를 불러옵니다
+
+from backend import env_setup  # 가장 먼저: .env 또는 Secrets에서 키를 불러옵니다
 
 import streamlit as st
 
@@ -18,10 +19,8 @@ if missing:
     st.stop()
 
 # 설정이 확인된 뒤에 나머지를 불러옵니다 (키가 없으면 불러오다가 오류가 나요)
-import auth  # noqa: E402
-import ui_account  # noqa: E402
-import ui_review  # noqa: E402
-import ui_write  # noqa: E402
+from backend import auth  # noqa: E402
+from frontend import ui_account, ui_review, ui_write  # noqa: E402
 
 # 삭제 후 같은 안내 문구를 한 번만 보여줍니다
 flash = st.session_state.pop("flash", None)

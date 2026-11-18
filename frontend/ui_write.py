@@ -3,11 +3,11 @@
 import pandas as pd
 import streamlit as st
 
-from analyze import analyze_diary
-from auth import current_user, current_user_dir
-from config import MOOD_KEYS
-from storage import has_analysis, load_entries, load_entry, save_entry
-from usage import refund, remaining, today_kst, try_use
+from backend.analyze import analyze_diary
+from backend.auth import current_user, current_user_dir
+from backend.config import MOOD_KEYS
+from backend.storage import has_analysis, load_entries, load_entry, save_entry
+from backend.usage import refund, remaining, today_kst, try_use
 
 PRIVACY_NOTICE = (
     "⚠️ 일기 내용은 분석을 위해 구글 서버로 전송돼요. "

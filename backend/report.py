@@ -4,7 +4,7 @@ import time
 
 from google.genai import types
 
-from analyze import MODELS, client
+from .analyze import MODELS, client
 
 REPORT_PROMPT = """너는 일주일치 일기 분석 결과를 보고 회고를 도와주는 도우미야.
 의학적 진단은 하지 않고, 단정하지 말고 "~로 보여요"처럼 조심스럽게 말해.

@@ -8,7 +8,7 @@ import os
 import re
 import shutil
 
-from config import DATA_DIR, EMOTIONS, MOOD_KEYS, USERS_DIR
+from .config import DATA_DIR, EMOTIONS, MOOD_KEYS, USERS_DIR
 
 # 별명: 2~20자, 한글/영문/숫자로 시작, 중간에 _ - 허용
 NICKNAME_RULE = re.compile(r"[A-Za-z0-9가-힣][A-Za-z0-9가-힣_-]{1,19}")

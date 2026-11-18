@@ -5,7 +5,7 @@ import os
 import threading
 from datetime import datetime, timedelta, timezone
 
-from config import (
+from .config import (
     DAILY_LIMITS,
     GLOBAL_DAILY_LIMITS,
     KIND_LABELS,

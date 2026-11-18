@@ -2,8 +2,8 @@
 
 import streamlit as st
 
-import auth
-from storage import delete_user_files, export_csv, export_json, load_entries
+from backend import auth
+from backend.storage import delete_user_files, export_csv, export_json, load_entries
 
 CONSENT_TEXT = """
 **시범 사용 안내**

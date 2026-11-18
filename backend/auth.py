@@ -12,8 +12,8 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from config import ACCOUNTS_FILE, CONSENT_VERSION, DATA_DIR
-from storage import delete_user_files, is_valid_nickname, user_dir
+from .config import ACCOUNTS_FILE, CONSENT_VERSION, DATA_DIR
+from .storage import delete_user_files, is_valid_nickname, user_dir
 
 load_dotenv()
 
