@@ -13,7 +13,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from .config import ACCOUNTS_FILE, CONSENT_VERSION, DATA_DIR
-from .storage import delete_user_files, is_valid_nickname, user_dir
+from .storage import delete_user_files, is_valid_nickname
 
 load_dotenv()
 
@@ -70,7 +70,6 @@ def _signup(nickname, pin, pin2, code):
         "locked_until": 0,
     }
     _save_accounts(accounts)
-    os.makedirs(user_dir(key), exist_ok=True)
     return None
 
 
@@ -116,7 +115,7 @@ def current_user():
 
 
 def current_user_dir():
-    return user_dir(current_user())
+    return current_user()
 
 
 def verify_pin(pin):
