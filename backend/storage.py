@@ -58,7 +58,7 @@ def has_analysis(entry):
 def delete_user_files(nickname):
     """한 사람의 일기를 DB에서 전부 지웁니다. 지웠으면 True."""
     _check(nickname)
-    return db.delete_user(nickname)
+    return db.delete_entries(nickname)
 
 
 # ---------- 내려받기 ----------

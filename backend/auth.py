@@ -2,7 +2,6 @@
 
 import hashlib
 import hmac
-import json
 import os
 import re
 import secrets
@@ -12,27 +11,14 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from .config import ACCOUNTS_FILE, CONSENT_VERSION, DATA_DIR
+from . import db
+from .config import CONSENT_VERSION
 from .storage import delete_user_files, is_valid_nickname
 
 load_dotenv()
 
 MAX_FAILS = 5        # 연속 5번 틀리면
 LOCK_SECONDS = 600   # 10분 동안 잠급니다
-
-
-# ---------- 계정 파일 ----------
-def _load_accounts():
-    if os.path.exists(ACCOUNTS_FILE):
-        with open(ACCOUNTS_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def _save_accounts(accounts):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
 
 
 def _hash_pin(pin, salt_hex):
@@ -58,25 +44,16 @@ def _signup(nickname, pin, pin2, code):
     if pin != pin2:
         return "PIN 두 번이 서로 달라요."
 
-    accounts = _load_accounts()
-    if key in accounts:
-        return "이미 있는 별명이에요."
-
     salt = secrets.token_hex(16)
-    accounts[key] = {
-        "salt": salt,
-        "hash": _hash_pin(pin, salt),
-        "fails": 0,
-        "locked_until": 0,
-    }
-    _save_accounts(accounts)
+    created = db.create_account(key, salt, _hash_pin(pin, salt))
+    if not created:
+        return "이미 있는 별명이에요."
     return None
 
 
 def _check_pin(key, pin):
     """PIN이 맞는지 확인합니다. 문제가 있으면 안내 문구를, 맞으면 None을 돌려줘요."""
-    accounts = _load_accounts()
-    acc = accounts.get(key)
+    acc = db.get_account(key)
     wrong = "별명이나 PIN이 맞지 않아요."
     if acc is None:
         return wrong
@@ -87,16 +64,14 @@ def _check_pin(key, pin):
         return f"시도가 너무 많아서 잠겼어요. 약 {wait}분 뒤에 다시 해보세요."
 
     if hmac.compare_digest(_hash_pin(pin, acc["salt"]), acc["hash"]):
-        acc["fails"] = 0
-        acc["locked_until"] = 0
-        _save_accounts(accounts)
+        db.update_account(key, fails=0, locked_until=0)
         return None
 
-    acc["fails"] = acc.get("fails", 0) + 1
-    if acc["fails"] >= MAX_FAILS:
-        acc["locked_until"] = now + LOCK_SECONDS
-        acc["fails"] = 0
-    _save_accounts(accounts)
+    fails = acc.get("fails", 0) + 1
+    locked_until = now + LOCK_SECONDS if fails >= MAX_FAILS else acc.get("locked_until", 0)
+    if fails >= MAX_FAILS:
+        fails = 0
+    db.update_account(key, fails=fails, locked_until=locked_until)
     return wrong
 
 
@@ -115,6 +90,7 @@ def current_user():
 
 
 def current_user_dir():
+    """로그인한 사람의 식별자(별명)를 돌려줍니다. DB 키로 써요."""
     return current_user()
 
 
@@ -125,39 +101,35 @@ def verify_pin(pin):
 
 def has_consent():
     """현재 동의 문구 버전에 동의했는지 알려줍니다."""
-    acc = _load_accounts().get(current_user(), {})
-    return acc.get("consent", {}).get("version") == CONSENT_VERSION
+    acc = db.get_account(current_user())
+    consent = (acc or {}).get("consent", {})
+    return consent.get("version") == CONSENT_VERSION
 
 
 def consent_time():
-    acc = _load_accounts().get(current_user(), {})
-    return acc.get("consent", {}).get("at")
+    acc = db.get_account(current_user())
+    consent = (acc or {}).get("consent", {})
+    return consent.get("at")
 
 
 def give_consent():
-    accounts = _load_accounts()
-    key = current_user()
-    if key in accounts:
-        accounts[key]["consent"] = {
-            "version": CONSENT_VERSION,
-            "at": datetime.now().isoformat(timespec="seconds"),
-        }
-        _save_accounts(accounts)
+    db.update_account(
+        current_user(),
+        consent_version=CONSENT_VERSION,
+        consent_at=datetime.now().isoformat(timespec="seconds"),
+    )
 
 
 def delete_account():
-    """일기 폴더와 계정 정보를 모두 지우고 로그아웃 상태로 만듭니다."""
+    """일기와 계정 정보를 모두 지우고 로그아웃 상태로 만듭니다."""
     key = current_user()
     delete_user_files(key)
-    accounts = _load_accounts()
-    accounts.pop(key, None)
-    _save_accounts(accounts)
+    db.delete_account(key)
     clear_session()
     st.session_state["flash"] = "계정과 일기를 모두 삭제했어요."
 
 
 def clear_session():
-    # 앞 사람의 입력 내용이 남지 않도록 세션 전체를 비웁니다
     for k in list(st.session_state.keys()):
         del st.session_state[k]
 
