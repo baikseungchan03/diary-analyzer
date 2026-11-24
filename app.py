@@ -1,3 +1,5 @@
+"""앱의 입구. 키를 준비하고, 로그인과 동의를 확인한 뒤 화면을 조립합니다."""
+
 from backend import env_setup  # 가장 먼저: .env 또는 Secrets에서 키를 불러옵니다
 
 import streamlit as st
@@ -15,21 +17,23 @@ if missing:
     )
     st.stop()
 
+# 설정이 확인된 뒤에 나머지를 불러옵니다 (키가 없으면 불러오다가 오류가 나요)
 from backend import db  # noqa: E402
-db.init_db()                      # ← db연결
+db.init_db()
 
 import time  # noqa: E402
 db.prune_sessions(time.time())  # 기한 지난 로그인 토큰 정리
 
 from backend import auth  # noqa: E402
-from frontend import ui_account, ui_review, ui_write  # noqa: E402
+from frontend import auth_ui, ui_account, ui_review, ui_write  # noqa: E402
 
 # 삭제 후 같은 안내 문구를 한 번만 보여줍니다
 flash = st.session_state.pop("flash", None)
 if flash:
     st.success(flash)
 
-if auth.require_login():
+if auth.is_authenticated():
+    auth_ui.render_sidebar()
     if not auth.has_consent():
         ui_account.render_consent()
     else:
@@ -42,3 +46,5 @@ if auth.require_login():
             ui_review.render()
         with tab_account:
             ui_account.render_account()
+else:
+    auth_ui.render_login()
