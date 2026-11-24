@@ -19,6 +19,7 @@ load_dotenv()
 
 MAX_FAILS = 5        # 연속 5번 틀리면
 LOCK_SECONDS = 600   # 10분 동안 잠급니다
+SESSION_DAYS = 7      # 로그인 유지 토큰 유효 기간 (일)
 
 
 def _hash_pin(pin, salt_hex):
@@ -75,13 +76,39 @@ def _check_pin(key, pin):
     return wrong
 
 
+def _new_session(nickname):
+    """새 로그인 유지 토큰을 만들어 DB에 저장하고, 주소창에 붙입니다."""
+    token = secrets.token_urlsafe(32)
+    expires_at = time.time() + SESSION_DAYS * 86400
+    db.save_session(token, nickname, expires_at)
+    st.query_params["token"] = token
+
+
 def _login(nickname, pin):
     """로그인합니다. 문제가 있으면 안내 문구를, 성공하면 None을 돌려줘요."""
     key = nickname.strip().lower()
     err = _check_pin(key, pin)
     if err is None:
         st.session_state["user"] = key
+        _new_session(key)
     return err
+
+
+def _restore_session():
+    """주소창의 토큰으로 자동 로그인을 시도합니다. 앱이 새로 시작될 때 한 번 불러요."""
+    if current_user():
+        return  # 이미 로그인 상태면 할 일 없음
+
+    token = st.query_params.get("token")
+    if not token:
+        return
+
+    session = db.get_session(token)
+    if session and session["expires_at"] > time.time():
+        st.session_state["user"] = session["nickname"]
+    else:
+        db.delete_session(token)
+        del st.query_params["token"]  # 못 쓰는 토큰은 주소창에서도 지워요
 
 
 # ---------- 다른 파일에서 쓰는 함수 ----------
@@ -130,6 +157,10 @@ def delete_account():
 
 
 def clear_session():
+    token = st.query_params.get("token")
+    if token:
+        db.delete_session(token)
+        del st.query_params["token"]
     for k in list(st.session_state.keys()):
         del st.session_state[k]
 
@@ -179,6 +210,7 @@ def _render_login():
 
 def require_login():
     """로그인 상태면 True. 아니면 로그인 화면을 보여주고 False."""
+    _restore_session()
     if current_user():
         with st.sidebar:
             st.write(f"👤 {current_user()}")

@@ -84,6 +84,15 @@ def init_db():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token VARCHAR(64) PRIMARY KEY,
+                    nickname VARCHAR(50) NOT NULL,
+                    expires_at DOUBLE NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
         conn.commit()
 
 
@@ -279,4 +288,45 @@ def prune_usage(keep_before):
         conn = _connect()
         with conn.cursor() as cur:
             cur.execute("DELETE FROM usage_daily WHERE usage_date < %s", (keep_before,))
+        conn.commit()
+        
+
+# ---------- 로그인 유지 토큰 ----------
+def save_session(token, nickname, expires_at):
+    with _lock:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO sessions (token, nickname, expires_at) VALUES (%s, %s, %s)",
+                (token, nickname, expires_at),
+            )
+        conn.commit()
+
+
+def get_session(token):
+    with _lock:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT nickname, expires_at FROM sessions WHERE token = %s", (token,)
+            )
+            row = cur.fetchone()
+    if not row:
+        return None
+    return {"nickname": row[0], "expires_at": row[1]}
+
+
+def delete_session(token):
+    with _lock:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+        conn.commit()
+
+
+def prune_sessions(now):
+    with _lock:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE expires_at < %s", (now,))
         conn.commit()

@@ -18,6 +18,9 @@ if missing:
 from backend import db  # noqa: E402
 db.init_db()                      # ← db연결
 
+import time  # noqa: E402
+db.prune_sessions(time.time())  # 기한 지난 로그인 토큰 정리
+
 from backend import auth  # noqa: E402
 from frontend import ui_account, ui_review, ui_write  # noqa: E402
 
