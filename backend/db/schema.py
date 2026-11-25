@@ -20,14 +20,12 @@ def init_db():
             )
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS accounts (
-                    nickname VARCHAR(50) PRIMARY KEY,
-                    salt VARCHAR(64) NOT NULL,
-                    pin_hash VARCHAR(64) NOT NULL,
-                    fails INT NOT NULL DEFAULT 0,
-                    locked_until DOUBLE NOT NULL DEFAULT 0,
-                    consent_version INT NOT NULL DEFAULT 0,
-                    consent_at VARCHAR(40) NULL
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash VARCHAR(64) PRIMARY KEY,
+                    nickname VARCHAR(50) NOT NULL,
+                    expires_at DOUBLE NOT NULL,
+                    rotate_after DOUBLE NOT NULL,
+                    superseded_by VARCHAR(64) NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """
             )

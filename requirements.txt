@@ -4,3 +4,4 @@ pandas
 python-dotenv
 cryptography
 pymysql
+streamlit-cookies-controller

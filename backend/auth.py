@@ -1,4 +1,4 @@
-"""별명 + PIN 로그인 로직과 세션 상태 관리. 화면 그리기는 frontend/auth_ui.py에 있어요."""
+"""별명 + PIN 로그인 로직과 세션 상태 관리."""
 
 import hashlib
 import hmac
@@ -14,18 +14,25 @@ from dotenv import load_dotenv
 from . import db
 from .config import CONSENT_VERSION
 from .storage import delete_user_files, is_valid_nickname
+from frontend import cookie_helper
 
 load_dotenv()
 
 MAX_FAILS = 5
 LOCK_SECONDS = 600
-SESSION_DAYS = 7
+SESSION_DAYS = 7          # 세션 자체의 최종 만료
+ROTATE_AFTER_HOURS = 1    # 이 시간이 지난 뒤 처음 쓰일 때만 토큰을 교체해요
 
 
 def _hash_pin(pin, salt_hex):
     return hashlib.pbkdf2_hmac(
         "sha256", pin.encode("utf-8"), bytes.fromhex(salt_hex), 200_000
     ).hex()
+
+
+def _hash_token(raw_token):
+    """쿠키에 담는 원본 토큰과, DB에 저장하는 값을 다르게 만듭니다."""
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
 def _check_pin(key, pin):
@@ -51,25 +58,82 @@ def _check_pin(key, pin):
     return wrong
 
 
+def _issue_session(nickname):
+    """새 세션 토큰을 발급해서 DB에 저장(해시)하고 쿠키에 원본을 담습니다."""
+    raw_token = secrets.token_urlsafe(32)
+    now = time.time()
+    db.save_session(
+        _hash_token(raw_token),
+        nickname,
+        expires_at=now + SESSION_DAYS * 86400,
+        rotate_after=now + ROTATE_AFTER_HOURS * 3600,
+    )
+    cookie_helper.set_token(raw_token, SESSION_DAYS)
+
+
 def _new_session(nickname):
-    token = secrets.token_urlsafe(32)
-    expires_at = time.time() + SESSION_DAYS * 86400
-    db.save_session(token, nickname, expires_at)
-    st.query_params["token"] = token
+    _issue_session(nickname)
 
 
 def _restore_session():
+    """쿠키의 토큰으로 자동 로그인을 시도합니다.
+
+    - 토큰이 유효하면 그대로 로그인하고, 교체 시점이 아직 안 됐으면 그대로 둬요.
+      (같은 시간대 안의 여러 탭·새로고침이 서로 방해하지 않도록)
+    - 교체 시점이 지났으면, 그제서야 새 토큰으로 바꾸고 옛 토큰은
+      '교체됨' 표시만 남겨요(완전히 지우지 않음).
+    - 이미 '교체됨' 표시가 있는 옛 토큰이 다시 나타나면, 탈취 신호로 보고
+      그 사람의 모든 세션을 강제로 끊어요(재사용 탐지).
+    """
     if current_user():
         return
-    token = st.query_params.get("token")
-    if not token:
+
+    raw_token = cookie_helper.get_token()
+    if not raw_token:
         return
-    session = db.get_session(token)
-    if session and session["expires_at"] > time.time():
-        st.session_state["user"] = session["nickname"]
-    else:
-        db.delete_session(token)
-        del st.query_params["token"]
+
+    token_hash = _hash_token(raw_token)
+    session = db.get_session(token_hash)
+
+    if session is None:
+        cookie_helper.clear_token()
+        return
+
+    if session["superseded_by"] is not None:
+        # 이미 교체되어 '죽은' 토큰이 다시 쓰였어요. 탈취 가능성 신호로 보고
+        # 안전을 위해 그 사람의 모든 세션을 끊습니다. 다시 PIN으로 로그인해야 해요.
+        db.delete_sessions_for_user(session["nickname"])
+        cookie_helper.clear_token()
+        return
+
+    if session["expires_at"] <= time.time():
+        db.delete_session(token_hash)
+        cookie_helper.clear_token()
+        return
+
+    st.session_state["user"] = session["nickname"]
+
+    if session["rotate_after"] <= time.time():
+        # 일정 시간이 지났으니, 이번에만 새 토큰으로 교체해요.
+        # 같은 시간대 안의 다른 탭은 교체 전 토큰을 그대로 계속 써도 돼서
+        # 동시 접속 충돌이 거의 생기지 않아요.
+        new_raw = secrets.token_urlsafe(32)
+        new_hash = _hash_token(new_raw)
+        now = time.time()
+        db.save_session(
+            new_hash,
+            session["nickname"],
+            expires_at=now + SESSION_DAYS * 86400,
+            rotate_after=now + ROTATE_AFTER_HOURS * 3600,
+        )
+        db.mark_superseded(token_hash, new_hash)
+        cookie_helper.set_token(new_raw, SESSION_DAYS)
+
+
+def revoke_leaked_token(raw_token):
+    """노출됐을 가능성이 있는 토큰(예: 주소창에서 발견)을 즉시 무효화합니다."""
+    if raw_token:
+        db.delete_session(_hash_token(raw_token))
 
 
 # ---------- frontend/auth_ui.py가 부르는 함수 ----------
@@ -107,7 +171,7 @@ def login(nickname, pin):
 
 
 def is_authenticated():
-    """로그인 상태인지 확인합니다. 주소창 토큰으로 복구도 시도해요."""
+    """로그인 상태인지 확인합니다. 쿠키로 복구도 시도해요."""
     _restore_session()
     return current_user() is not None
 
@@ -149,15 +213,16 @@ def delete_account():
     key = current_user()
     delete_user_files(key)
     db.delete_account(key)
+    db.delete_sessions_for_user(key)
     clear_session()
     st.session_state["flash"] = "계정과 일기를 모두 삭제했어요."
 
 
 def clear_session():
-    token = st.query_params.get("token")
-    if token:
-        db.delete_session(token)
-        del st.query_params["token"]
+    raw_token = cookie_helper.get_token()
+    if raw_token:
+        db.delete_session(_hash_token(raw_token))
+        cookie_helper.clear_token()
     for k in list(st.session_state.keys()):
         del st.session_state[k]
 
